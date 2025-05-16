@@ -1,285 +1,97 @@
-set(PXR_PREFIX pxr/base)
-set(PXR_PACKAGE trace)
+cmake_minimum_required(VERSION 3.23...4.1)
 
-pxr_library(trace
-    LIBRARIES
-        arch
-        js
-        tf
-        TBB::tbb
+# Default build type value.
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type")
 
-    PUBLIC_CLASSES
-        aggregateTree
-        aggregateNode
-        category
-        collection
-        collectionNotice
-        collector
-        counterAccumulator
-        dataBuffer
-        dynamicKey
-        event
-        eventContainer
-        eventData
-        eventList
-        eventNode
-        eventTree
-        key
-        reporter
-        reporterBase
-        reporterDataSourceBase
-        reporterDataSourceCollection
-        reporterDataSourceCollector
-        serialization
-        staticKeyData
-        threads
-
-    PRIVATE_CLASSES
-        aggregateTreeBuilder
-        eventTreeBuilder
-        jsonSerialization
-
-    PUBLIC_HEADERS
-        api.h
-        concurrentList.h
-        stringHash.h
-        trace.h
-
-    PYMODULE_CPPFILES
-        module.cpp
-        wrapAggregateNode.cpp
-        wrapAggregateTree.cpp
-        wrapCollector.cpp
-        wrapReporter.cpp
-        wrapTestTrace.cpp
-
-    PYMODULE_FILES
-        __init__.py
-        __main__.py
-
-    DOXYGEN_FILES
-        overview.dox
-        detailedOverview.dox
+project(pxr-trace
+    VERSION 0.25.8
+    HOMEPAGE_URL "https://github.com/untwine/pxr-trace"
+    LANGUAGES C CXX
 )
 
-pxr_build_test(testTraceCategory
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceCategory.cpp
+if (NOT "${CMAKE_CXX_STANDARD}")
+    set(CMAKE_CXX_STANDARD 17 CACHE STRING "Default C++ standard")
+endif()
+
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Default options.
+option(BUILD_SHARED_LIBS "Build Shared Library" ON)
+option(BUILD_PYTHON_BINDINGS "Build Python Bindings" ON)
+option(BUILD_TESTS "Build tests" OFF)
+option(ENABLE_PRECOMPILED_HEADERS "Enable precompiled headers." OFF)
+
+if (NOT BUILD_SHARED_LIBS)
+    add_compile_definitions(PXR_STATIC)
+endif()
+
+include(GNUInstallDirs)
+
+if (WIN32)
+    # Prevent WinDef.h from defining min/max macros.
+    add_definitions(-DNOMINMAX)
+
+    # Exclude unnecessary Windows APIs for faster builds and fewer macro conflicts.
+    add_definitions(-DWIN32_LEAN_AND_MEAN)
+
+    # Disable /Zc:inline in VS 2019+ to retain "arch_ctor_<name>" symbols in release.
+    # https://developercommunity.visualstudio.com/t/914943
+    if (MSVC_VERSION GREATER_EQUAL 1920)
+        set(CMAKE_CXX_FLAGS "/Zc:inline- ${CMAKE_CXX_FLAGS}")
+    else()
+        set(CMAKE_CXX_FLAGS "/Zc:inline ${CMAKE_CXX_FLAGS}")
+    endif()
+
+    # Disable harmless Visual Studio warning C4003 (non-standard preprocessor).
+    # https://developercommunity.visualstudio.com/t/364698
+    set(CMAKE_CXX_FLAGS "/wd4003 ${CMAKE_CXX_FLAGS}")
+endif()
+
+find_package(pxr-arch 0.25.8 REQUIRED)
+find_package(pxr-tf 0.25.8 REQUIRED)
+find_package(pxr-js 0.25.8 REQUIRED)
+find_package(TBB 2017.0 REQUIRED)
+
+if(BUILD_PYTHON_BINDINGS)
+    add_compile_definitions(PXR_PYTHON_SUPPORT_ENABLED=1)
+    find_package(pxr-boost 0.25.8 REQUIRED)
+
+    if (NOT CMAKE_INSTALL_PYTHON_LIBDIR)
+        set(py_version "${Python_VERSION_MAJOR}.${Python_VERSION_MINOR}")
+        set(CMAKE_INSTALL_PYTHON_LIBDIR
+            "${CMAKE_INSTALL_LIBDIR}/python${py_version}/site-packages"
+            CACHE INTERNAL "Installation Python library path.")
+    endif ()
+endif()
+
+add_subdirectory(src)
+
+# Build and setup tests if required.
+if (BUILD_TESTS)
+    # Python is needed to run the tests.
+    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+
+    enable_testing()
+    add_subdirectory(test)
+endif()
+
+include(CMakePackageConfigHelpers)
+
+configure_package_config_file(
+    "cmake/pxr-trace-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/pxr-trace-config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/pxr-trace
 )
 
-pxr_build_test(testTraceData
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceData.cpp
+write_basic_package_version_file(
+    "pxr-trace-config-version.cmake"
+    COMPATIBILITY AnyNewerVersion
 )
 
-pxr_build_test(testTraceHash
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceHash.cpp
-)
-
-pxr_build_test(testTraceMacros
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceMacros.cpp
-)
-
-pxr_build_test(testTraceOverhead
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceOverhead.cpp
-)
-
-pxr_build_test(testTraceThreading
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceThreading.cpp
-)
-
-pxr_build_test(testTraceSerialization
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceSerialization.cpp
-)
-
-pxr_build_test(testTraceCounters
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceCounters.cpp
-)
-
-pxr_build_test(testTraceMarkers
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceMarkers.cpp
-)
-
-pxr_build_test(testTraceReportPerf
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceReportPerf.cpp
-)
-
-pxr_build_test(testTraceEventContainer
-    LIBRARIES
-        trace
-    CPPFILES
-        testenv/testTraceEventContainer.cpp
-)
-
-pxr_test_scripts(
-    testenv/testTrace.py
-    testenv/testTraceRecursion.py
-    testenv/testTraceReports.py
-    testenv/testTraceReporter.py
-    testenv/testTraceReporterLoadTrace.py
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion1
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion2
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion3
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion4
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion5
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion6
-)
-
-pxr_install_test_dir(
-    SRC testenv/testTraceRecursion.testenv
-    DEST testTraceRecursion7
-)
-
-pxr_register_test(testTraceCategory
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceCategory"
-)
-
-pxr_register_test(testTraceData
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceData"
-)
-
-pxr_register_test(testTraceHash
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceHash"
-)
-
-pxr_register_test(testTraceMacros
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceMacros"
-)
-
-pxr_register_test(testTraceThreading
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceThreading"
-)
-
-pxr_register_test(testTrace
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTrace"
-)
-
-pxr_register_test(testTraceRecursion1
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_5begins.out
-)
-
-pxr_register_test(testTraceRecursion2
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_typical.out
-)
-
-pxr_register_test(testTraceRecursion3
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_newnode.out
-)
-
-pxr_register_test(testTraceRecursion4
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_inner.out
-)
-
-pxr_register_test(testTraceRecursion5
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_1817.out
-)
-
-pxr_register_test(testTraceRecursion6
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_branch.out
-)
-
-pxr_register_test(testTraceRecursion7
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceRecursion"
-    DIFF_COMPARE recursion_marker_merge.out
-)
-
-pxr_register_test(testTraceReports
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceReports"
-)
-
-pxr_register_test(testTraceReporter
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceReporter"
-)
-
-pxr_register_test(testTraceReporterLoadTrace
-    PYTHON
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceReporterLoadTrace"
-)
-
-pxr_register_test(testTraceSerialization
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceSerialization"
-)
-
-pxr_register_test(testTraceCounters
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceCounters"
-)
-
-pxr_register_test(testTraceMarkers
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceMarkers"
-)
-
-pxr_register_test(testTraceReportPerf
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceReportPerf"
-)    
-
-pxr_register_test(testTraceEventContainer
-    COMMAND "${CMAKE_INSTALL_PREFIX}/tests/testTraceEventContainer"
+install(
+    FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/pxr-trace-config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/pxr-trace-config-version.cmake"
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/cmake/pxr-trace
 )
